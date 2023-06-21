@@ -415,6 +415,13 @@ impl View {
     ) -> TextAnnotations<'a> {
         let mut text_annotations = TextAnnotations::default();
 
+        if let Some(overlays) = doc.jump_label_overlays.get(&self.id) {
+            let style = theme
+                .and_then(|t| t.find_scope_index("ui.virtual.jump-label"))
+                .map(Highlight);
+            text_annotations.add_overlay(overlays, style);
+        }
+
         let DocumentInlayHints {
             id: _,
             type_inlay_hints,

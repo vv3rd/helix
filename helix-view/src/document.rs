@@ -7,7 +7,7 @@ use helix_core::auto_pairs::AutoPairs;
 use helix_core::doc_formatter::TextFormat;
 use helix_core::encoding::Encoding;
 use helix_core::syntax::{Highlight, LanguageServerFeature};
-use helix_core::text_annotations::InlineAnnotation;
+use helix_core::text_annotations::{InlineAnnotation, Overlay};
 use helix_vcs::{DiffHandle, DiffProviderRegistry};
 
 use ::parking_lot::Mutex;
@@ -139,6 +139,9 @@ pub struct Document {
     /// Set to `true` when the document is updated, reset to `false` on the next inlay hints
     /// update from the LSP
     pub inlay_hints_oudated: bool,
+
+    /// Overlay labels for jump points in the document, by view.
+    pub jump_label_overlays: HashMap<ViewId, Vec<Overlay>>,
 
     path: Option<PathBuf>,
     encoding: &'static encoding::Encoding,
@@ -656,6 +659,7 @@ impl Document {
             selections: HashMap::default(),
             inlay_hints: HashMap::default(),
             inlay_hints_oudated: false,
+            jump_label_overlays: HashMap::default(),
             indent_style: DEFAULT_INDENT,
             line_ending,
             restore_cursor: false,
@@ -1230,6 +1234,16 @@ impl Document {
 
             self.diagnostics
                 .sort_unstable_by_key(|diagnostic| diagnostic.range);
+
+            // Update jump label positions. This should be a no-op most of the time unless
+            // a document is updated asynchronously while the jump labels are present.
+            for overlays in self.jump_label_overlays.values_mut() {
+                changes.update_positions(
+                    overlays
+                        .iter_mut()
+                        .map(|overlay| (&mut overlay.char_idx, Assoc::After)),
+                );
+            }
 
             // Update the inlay hint annotations' positions, helping ensure they are displayed in the proper place
             let apply_inlay_hint_changes = |annotations: &mut Rc<[InlineAnnotation]>| {

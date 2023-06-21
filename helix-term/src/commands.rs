@@ -490,6 +490,7 @@ impl MappableCommand {
         record_macro, "Record macro",
         replay_macro, "Replay macro",
         command_palette, "Open command palette",
+        jump_to_label, "Jump to a two-character label",
     );
 }
 
@@ -5687,4 +5688,108 @@ fn replay_macro(cx: &mut Context) {
         // replaying recursively.
         cx.editor.macro_replaying.pop();
     }));
+}
+
+fn jump_to_label(cx: &mut Context) {
+    use helix_core::text_annotations::Overlay;
+
+    fn clear_overlays(editor: &mut Editor) {
+        let (view, doc) = current!(editor);
+        doc.jump_label_overlays.remove(&view.id);
+    }
+
+    let alphabet = &cx.editor.config().jump_label_alphabet;
+    let alphabet_chars: Vec<char> = alphabet.chars().collect();
+    let alphabet_len = alphabet_chars.len();
+    // Each jump uses a distinct two-character pair from the alphabet.
+    // For example for the default alphabet labels will be:
+    // aa, ab, ac, ..., ba, bb, bc, ..., zx, zy, zz
+    let jump_limit = alphabet_len * alphabet_len;
+
+    // Calculate the jump candidates: ranges for any visible words with two or
+    // more characters.
+    let mut candidates = Vec::with_capacity(jump_limit);
+    let (view, doc) = current!(cx.editor);
+    let text = doc.text().slice(..);
+
+    let start = text.line_to_char(text.char_to_line(view.offset.anchor));
+    // This is not necessarily exact if there is virtual text like soft wrap.
+    // It's ok though because the extra jump labels will not be rendered.
+    let end = text.line_to_char(view.estimate_last_doc_line(doc));
+    let mut word = Range::point(start);
+
+    loop {
+        word = movement::move_next_word_start(text, word, 1);
+
+        // The word is on a word longer than 2 characters.
+        if text
+            .chars_at(word.anchor)
+            .take_while(|ch| ch.is_alphabetic())
+            .take(2)
+            .count()
+            == 2
+        {
+            candidates.push(word);
+        }
+
+        if word.anchor >= end || candidates.len() == jump_limit {
+            break;
+        }
+    }
+
+    // Add label for each jump candidate to the View as virtual text.
+    let overlays: Vec<_> = candidates
+        .iter()
+        .enumerate()
+        .flat_map(|(i, range)| {
+            [
+                Overlay::new(range.anchor, String::from(alphabet_chars[i / alphabet_len])),
+                Overlay::new(
+                    range.anchor + 1,
+                    String::from(alphabet_chars[i % alphabet_len]),
+                ),
+            ]
+        })
+        .collect();
+    doc.jump_label_overlays.insert(view.id, overlays);
+
+    // Accept two characters matching a visible label. Jump to the candidate
+    // for that label if it exists.
+    cx.on_next_key(move |cx, event| {
+        let alphabet = &cx.editor.config().jump_label_alphabet;
+
+        let Some(first_index) = event.char().and_then(|ch| alphabet.find(ch)) else {
+            clear_overlays(cx.editor);
+            return;
+        };
+
+        // Bail if the given character cannot be a jump label.
+        if first_index * alphabet_len >= candidates.len() {
+            clear_overlays(cx.editor);
+            return;
+        }
+
+        cx.on_next_key(move |cx, event| {
+            clear_overlays(cx.editor);
+
+            let alphabet = &cx.editor.config().jump_label_alphabet;
+
+            let Some(second_index) = event.char().and_then(|ch| alphabet.find(ch)) else {
+                clear_overlays(cx.editor);
+                return;
+            };
+
+            let index = first_index * alphabet_len + second_index;
+            if let Some(range) = candidates.get(index) {
+                let (view, doc) = current!(cx.editor);
+                // Trim any trailing whitespace left by 'move_next_word_start'.
+                let head = movement::backwards_skip_while(doc.text().slice(..), range.head, |ch| {
+                    ch.is_whitespace()
+                })
+                .unwrap_or(range.head);
+
+                doc.set_selection(view.id, Selection::single(range.anchor, head));
+            }
+        });
+    });
 }

@@ -289,6 +289,9 @@ pub struct Config {
     pub default_line_ending: LineEndingConfig,
     /// Enables smart tab
     pub smart_tab: Option<SmartTabConfig>,
+    /// Characters used in jump labels.
+    #[serde(deserialize_with = "deserialize_jump_label_alphabet")]
+    pub jump_label_alphabet: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, PartialOrd, Ord)]
@@ -305,6 +308,30 @@ impl Default for SmartTabConfig {
             supersede_menu: false,
         }
     }
+}
+
+fn deserialize_jump_label_alphabet<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use std::collections::HashSet;
+
+    let alphabet = String::deserialize(deserializer)?;
+    if alphabet.is_empty() {
+        return Err(serde::de::Error::custom(
+            "the jump list alphabet cannot be empty",
+        ));
+    }
+    let mut charset: HashSet<char> = alphabet.chars().collect();
+    for ch in alphabet.chars() {
+        if charset.remove(&ch) {
+            return Err(serde::de::Error::custom(format!(
+                "duplicate character '{ch}' found in jump label alphabet"
+            )));
+        }
+    }
+
+    Ok(alphabet)
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -843,6 +870,7 @@ impl Default for Config {
             workspace_lsp_roots: Vec::new(),
             default_line_ending: LineEndingConfig::default(),
             smart_tab: Some(SmartTabConfig::default()),
+            jump_label_alphabet: "abcdefghijklmnopqrstuvwxyz".to_owned(),
         }
     }
 }
