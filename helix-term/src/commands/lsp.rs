@@ -359,7 +359,7 @@ pub fn symbol_picker(cx: &mut Context) {
                 };
                 // lsp has two ways to represent symbols (flat/nested)
                 // convert the nested variant to flat, so that we have a homogeneous list
-                let symbols = match symbols {
+                let mut symbols = match symbols {
                     lsp::DocumentSymbolResponse::Flat(symbols) => symbols
                         .into_iter()
                         .map(|symbol| SymbolInformationItem {
@@ -385,6 +385,7 @@ pub fn symbol_picker(cx: &mut Context) {
                         flat_symbols
                     }
                 };
+                symbols.sort_unstable_by_key(|a| a.symbol.location.range.start.line);
                 Ok(symbols)
             }
         })
