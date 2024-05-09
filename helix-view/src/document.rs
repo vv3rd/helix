@@ -763,9 +763,10 @@ impl Document {
         {
             use std::process::Stdio;
             let text = self.text().clone();
+            let filepath = self.path()?.to_str().unwrap_or("");
             let mut process = tokio::process::Command::new(&fmt_cmd);
             process
-                .args(fmt_args)
+                .args(fmt_args.into_iter().map(|arg| arg.replace("{}", filepath)))
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
