@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
 
 /// A generic pointer to a file location.
 ///
@@ -47,6 +50,14 @@ impl TryFrom<Uri> for PathBuf {
     }
 }
 
+impl fmt::Display for Uri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::File(path) => write!(f, "{}", path.display()),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct UrlConversionError {
     source: url::Url,
@@ -59,8 +70,8 @@ pub enum UrlConversionErrorKind {
     UnableToConvert,
 }
 
-impl std::fmt::Display for UrlConversionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for UrlConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
             UrlConversionErrorKind::UnsupportedScheme => {
                 write!(f, "unsupported scheme in URL: {}", self.source.scheme())
