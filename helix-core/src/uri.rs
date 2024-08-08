@@ -1,6 +1,7 @@
 use std::{
     fmt,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 /// A generic pointer to a file location.
@@ -9,7 +10,7 @@ use std::{
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[non_exhaustive]
 pub enum Uri {
-    File(PathBuf),
+    File(Arc<Path>),
 }
 
 impl Uri {
@@ -26,27 +27,11 @@ impl Uri {
             Self::File(path) => Some(path),
         }
     }
-
-    pub fn as_path_buf(self) -> Option<PathBuf> {
-        match self {
-            Self::File(path) => Some(path),
-        }
-    }
 }
 
 impl From<PathBuf> for Uri {
     fn from(path: PathBuf) -> Self {
-        Self::File(path)
-    }
-}
-
-impl TryFrom<Uri> for PathBuf {
-    type Error = ();
-
-    fn try_from(uri: Uri) -> Result<Self, Self::Error> {
-        match uri {
-            Uri::File(path) => Ok(path),
-        }
+        Self::File(path.into())
     }
 }
 
@@ -88,7 +73,7 @@ impl std::error::Error for UrlConversionError {}
 fn convert_url_to_uri(url: &url::Url) -> Result<Uri, UrlConversionErrorKind> {
     if url.scheme() == "file" {
         url.to_file_path()
-            .map(|path| Uri::File(helix_stdx::path::normalize(path)))
+            .map(|path| Uri::File(helix_stdx::path::normalize(path).into()))
             .map_err(|_| UrlConversionErrorKind::UnableToConvert)
     } else {
         Err(UrlConversionErrorKind::UnsupportedScheme)
